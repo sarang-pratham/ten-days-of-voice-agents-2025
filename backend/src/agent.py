@@ -29,7 +29,8 @@ class MiloAssistant(Agent):
         super().__init__(
             instructions="""You are Milo, a personal appointment scheduling assistant.
             Your goal is to help users schedule their appointments.
-            You need to collect the following information for each appointment: the user's intent or the purpose of the appointment, the date and time, the urgency level (e.g., high, medium, low), and a brief summary.
+            You need to collect the following information for each appointment: the user's intent or the purpose of the appointment, the date and time, the urgency level (e.g., high, medium, low) - the urgency would be default low unless specfied.
+            You can summarize the users request before saving it.
             Once you have all this information, you must call the `add_appointment` tool to save it.
             You can also list all the scheduled appointments for the user if they ask for it, by using the `get_appointments` tool.
             You can also get the current date and time by using the `get_current_datetime` tool. This is useful for scheduling appointments relative to today.
