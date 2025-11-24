@@ -1,6 +1,7 @@
 import logging
-
+from typing import List
 from dotenv import load_dotenv
+from datetime import datetime
 from livekit.agents import (
     Agent,
     AgentSession,
@@ -12,8 +13,8 @@ from livekit.agents import (
     cli,
     metrics,
     tokenize,
-    # function_tool,
-    # RunContext
+    function_tool,
+    RunContext,
 )
 from livekit.plugins import murf, silero, google, deepgram, noise_cancellation
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
@@ -23,31 +24,71 @@ logger = logging.getLogger("agent")
 load_dotenv(".env.local")
 
 
-class Assistant(Agent):
+class MiloAssistant(Agent):
     def __init__(self) -> None:
         super().__init__(
-            instructions="""You are a helpful voice AI assistant. The user is interacting with you via voice, even if you perceive the conversation as text.
-            You eagerly assist users with their questions by providing information from your extensive knowledge.
-            Your responses are concise, to the point, and without any complex formatting or punctuation including emojis, asterisks, or other symbols.
-            You are curious, friendly, and have a sense of humor.""",
+            instructions="""You are Milo, a personal appointment scheduling assistant.
+            Your goal is to help users schedule their appointments.
+            You need to collect the following information for each appointment: the user's intent or the purpose of the appointment, the date and time, the urgency level (e.g., high, medium, low), and a brief summary.
+            Once you have all this information, you must call the `add_appointment` tool to save it.
+            You can also list all the scheduled appointments for the user if they ask for it, by using the `get_appointments` tool.
+            You can also get the current date and time by using the `get_current_datetime` tool. This is useful for scheduling appointments relative to today.
+            Start by greeting the user and asking how you can help them schedule something.""",
+        )
+        self.appointments: List[dict] = [] # You would probably have some kind of database, as of now its just inmemory
+
+    @function_tool
+    async def add_appointment(
+        self,
+        context: RunContext,
+        intent: str,
+        datetime: str,
+        urgency: str,
+        summary: str,
+    ):
+        """Use this tool to add a new appointment to the user's schedule.
+
+        Args:
+            intent: The purpose of the appointment.
+            datetime: The date and time of the appointment.
+            urgency: The urgency level of the appointment (e.g., high, medium, low).
+            summary: A brief summary of the appointment.
+        """
+
+        logger.info(
+            f"Adding appointment: intent='{intent}', datetime='{datetime}', urgency='{urgency}', summary='{summary}'"
         )
 
-    # To add tools, use the @function_tool decorator.
-    # Here's an example that adds a simple weather tool.
-    # You also have to add `from livekit.agents import function_tool, RunContext` to the top of this file
-    # @function_tool
-    # async def lookup_weather(self, context: RunContext, location: str):
-    #     """Use this tool to look up current weather information in the given location.
-    #
-    #     If the location is not supported by the weather service, the tool will indicate this. You must tell the user the location's weather is unavailable.
-    #
-    #     Args:
-    #         location: The location to look up weather information for (e.g. city name)
-    #     """
-    #
-    #     logger.info(f"Looking up weather for {location}")
-    #
-    #     return "sunny with a temperature of 70 degrees."
+        appointment = {
+            "intent": intent,
+            "datetime": datetime,
+            "urgency": urgency,
+            "summary": summary,
+        }
+        self.appointments.append(appointment)
+
+        return "I have successfully scheduled the appointment for you."
+
+    @function_tool
+    async def get_appointments(self, context: RunContext):
+        """Use this tool to get the list of all scheduled appointments."""
+
+        if not self.appointments:
+            return "There are no appointments scheduled."
+
+        formatted_appointments = "\n".join(
+            [
+                f"{i+1}. Intent: {a['intent']}, Date: {a['datetime']}, Urgency: {a['urgency']}, Summary: {a['summary']}"
+                for i, a in enumerate(self.appointments)
+            ]
+        )
+
+        return f"Here are your scheduled appointments:\n{formatted_appointments}"
+
+    @function_tool
+    async def get_current_datetime(self, context: RunContext):
+        """Use this tool to get the current date and time."""
+        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def prewarm(proc: JobProcess):
@@ -69,16 +110,17 @@ async def entrypoint(ctx: JobContext):
         # A Large Language Model (LLM) is your agent's brain, processing user input and generating a response
         # See all available models at https://docs.livekit.io/agents/models/llm/
         llm=google.LLM(
-                model="gemini-2.5-flash",
-            ),
+            model="gemini-2.5-flash",
+        ),
         # Text-to-speech (TTS) is your agent's voice, turning the LLM's text into speech that the user can hear
         # See all available models as well as voice selections at https://docs.livekit.io/agents/models/tts/
         tts=murf.TTS(
-                voice="en-US-matthew", 
-                style="Conversation",
-                tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
-                text_pacing=True
-            ),
+            voice="en-US-matthew",
+            style="Conversation",
+            tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
+            text_pacing=True,
+            model="FALCON"
+        ),
         # VAD and turn detection are used to determine when the user is speaking and when the agent should respond
         # See more at https://docs.livekit.io/agents/build/turns
         turn_detection=MultilingualModel(),
@@ -123,7 +165,7 @@ async def entrypoint(ctx: JobContext):
 
     # Start the session, which initializes the voice pipeline and warms up the models
     await session.start(
-        agent=Assistant(),
+        agent=MiloAssistant(),
         room=ctx.room,
         room_input_options=RoomInputOptions(
             # For telephony applications, use `BVCTelephony` for best results
