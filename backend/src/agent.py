@@ -1,5 +1,5 @@
 import logging
-
+import json
 from dotenv import load_dotenv
 from livekit.agents import (
     Agent,
@@ -12,8 +12,8 @@ from livekit.agents import (
     cli,
     metrics,
     tokenize,
-    # function_tool,
-    # RunContext
+    function_tool,
+    RunContext,
 )
 from livekit.plugins import murf, silero, google, deepgram, noise_cancellation
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
@@ -26,28 +26,57 @@ load_dotenv(".env.local")
 class Assistant(Agent):
     def __init__(self) -> None:
         super().__init__(
-            instructions="""You are a helpful voice AI assistant. The user is interacting with you via voice, even if you perceive the conversation as text.
-            You eagerly assist users with their questions by providing information from your extensive knowledge.
+            instructions="""You are a friendly barista for a coffee brand called "Galactic Grind". The user is interacting with you via voice, even if you perceive the conversation as text.
+            Your goal is to take their coffee order. Greet them ask what they will be getting.
+            You must ask them for the following information:
+            - Drink type (e.g., latte, cappuccino, americano)
+            - Size (e.g., small, medium, large)
+            - Milk (e.g., whole, skim, oat, almond)
+            - Extras (e.g., sugar, syrup, extra shot)
+            - Name for the order
+            Once you have all the information, you must confirm the order with the user.
+            If the user confirms the order, you must call the `save_order` tool with the collected information.
+            You should be friendly, patient, and helpful throughout the conversation.
             Your responses are concise, to the point, and without any complex formatting including emojis, asterisks, or other weird symbols.
             You are curious, friendly, and have a sense of humor.""",
         )
 
-    # To add tools, use the @function_tool decorator.
-    # Here's an example that adds a simple weather tool.
-    # You also have to add `from livekit.agents import function_tool, RunContext` to the top of this file
-    # @function_tool
-    # async def lookup_weather(self, context: RunContext, location: str):
-    #     """Use this tool to look up current weather information in the given location.
-    #
-    #     If the location is not supported by the weather service, the tool will indicate this. You must tell the user the location's weather is unavailable.
-    #
-    #     Args:
-    #         location: The location to look up weather information for (e.g. city name)
-    #     """
-    #
-    #     logger.info(f"Looking up weather for {location}")
-    #
-    #     return "sunny with a temperature of 70 degrees."
+    @function_tool
+    async def save_order(
+        self,
+        context: RunContext,
+        drink_type: str,
+        size: str,
+        milk: str,
+        extras: str,
+        name: str,
+    ):
+        """
+        Use this tool to save the user's coffee order to a file.
+
+        Args:
+            drink_type: The type of drink the user wants.
+            size: The size of the drink.
+            milk: The type of milk the user wants.
+            extras: Any extras the user wants.
+            name: The name for the order.
+        """
+        logger.info(
+            f"Saving order for {name}: {size} {drink_type} with {milk} and {extras}"
+        )
+
+        order = {
+            "drink_type": drink_type,
+            "size": size,
+            "milk": milk,
+            "extras": extras,
+            "name": name,
+        }
+
+        with open("order.json", "w") as f:
+            json.dump(order, f, indent=2)
+
+        return "Order saved successfully."
 
 
 def prewarm(proc: JobProcess):
